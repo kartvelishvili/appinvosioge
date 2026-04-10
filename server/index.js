@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 4000;
 // CORS
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:3000',
-  'https://app.invoiso.ge',
+  'https://my.invoiso.ge',
 ];
 app.use(cors({
   origin: (origin, cb) => {
