@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 
-import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 
@@ -13,29 +12,24 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const handleSession = useCallback(async (session) => {
-    setSession(session);
-    setUser(session?.user ?? null);
-    setLoading(false);
-  }, []);
-
+  // Restore session from stored JWT on mount
   useEffect(() => {
     const init = async () => {
-      // Restore Supabase session (kept for DB RLS compatibility)
-      const { data: { session } } = await supabase.auth.getSession();
-      handleSession(session);
+      const token = api.getToken();
+      if (token) {
+        try {
+          const data = await api.get('/api/auth/me');
+          setUser(data.user);
+          setSession({ access_token: token });
+        } catch {
+          // Token expired or invalid
+          api.setToken(null);
+        }
+      }
+      setLoading(false);
     };
     init();
-
-    // Listen for Supabase auth state changes (triggered by setSession, signOut, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        handleSession(session);
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, [handleSession]);
+  }, []);
 
   const signUp = useCallback(async (email, password, options) => {
     try {
@@ -45,13 +39,9 @@ export const AuthProvider = ({ children }) => {
         ...(options?.data || {}),
       });
 
-      // Store our JWT
       api.setToken(result.token);
-
-      // Set Supabase session for DB RLS compatibility
-      if (result.supabase_session) {
-        await supabase.auth.setSession(result.supabase_session);
-      }
+      setUser(result.user);
+      setSession({ access_token: result.token });
 
       return { error: null };
     } catch (err) {
@@ -68,13 +58,9 @@ export const AuthProvider = ({ children }) => {
     try {
       const result = await api.post('/api/auth/login', { email, password });
 
-      // Store our JWT
       api.setToken(result.token);
-
-      // Set Supabase session for DB RLS compatibility
-      if (result.supabase_session) {
-        await supabase.auth.setSession(result.supabase_session);
-      }
+      setUser(result.user);
+      setSession({ access_token: result.token });
 
       return { error: null };
     } catch (err) {
@@ -88,22 +74,16 @@ export const AuthProvider = ({ children }) => {
   }, [toast]);
 
   const signOut = useCallback(async () => {
-    // Clear our JWT
+    try {
+      await api.post('/api/auth/logout');
+    } catch { /* ignore */ }
+
     api.setToken(null);
+    setUser(null);
+    setSession(null);
 
-    // Sign out from Supabase (clears session, triggers onAuthStateChange)
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Sign out Failed",
-        description: error.message || "Something went wrong",
-      });
-    }
-
-    return { error };
-  }, [toast]);
+    return { error: null };
+  }, []);
 
   const value = useMemo(() => ({
     user,
