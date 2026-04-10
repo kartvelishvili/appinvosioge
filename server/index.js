@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 
 const authRoutes = require('./routes/auth');
+const dataRoutes = require('./routes/data');
 const emailRoutes = require('./routes/email');
 const smsRoutes = require('./routes/sms');
 
@@ -25,8 +26,12 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/data', dataRoutes);
 app.use('/api', emailRoutes);
 app.use('/api', smsRoutes);
 
