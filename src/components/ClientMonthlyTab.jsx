@@ -8,7 +8,7 @@ const ClientMonthlyTab = ({ invoices }) => {
 
   // Group invoices by Month Year
   const monthlyData = invoices.reduce((acc, invoice) => {
-    const date = new Date(invoice.issue_date);
+    const date = new Date(invoice.invoice_date || invoice.created_at);
     const key = `${date.getFullYear()}-${date.getMonth() + 1}`;
     
     if (!acc[key]) {

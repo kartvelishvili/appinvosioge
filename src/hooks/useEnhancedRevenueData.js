@@ -20,14 +20,14 @@ export const useEnhancedRevenueData = () => {
         const { data: invoices, error: fetchError } = await supabase
           .from('invoices')
           .select('*, clients(name, company_name)')
-          .gte('issue_date', previousMonthStart.toISOString())
-          .lte('issue_date', currentMonthEnd.toISOString());
+          .gte('invoice_date', previousMonthStart.toISOString())
+          .lte('invoice_date', currentMonthEnd.toISOString());
 
         if (fetchError) throw fetchError;
 
         const processMonth = (start, end) => {
           const monthInvoices = invoices.filter(inv => {
-            const date = new Date(inv.issue_date || inv.created_at);
+            const date = new Date(inv.invoice_date || inv.created_at);
             return date >= start && date <= end;
           });
 

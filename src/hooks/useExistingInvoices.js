@@ -19,7 +19,7 @@ export const useExistingInvoices = () => {
           contracts (id, contract_number)
         `)
         .not('contract_id', 'is', null) // Only fetch invoices linked to a contract
-        .order('issue_date', { ascending: false });
+        .order('invoice_date', { ascending: false });
 
       if (error) throw error;
 

@@ -1,9 +1,8 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, ArrowLeft, Calendar, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, Calendar, RefreshCw, Zap } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -38,6 +37,24 @@ const CreateInvoice = () => {
     { description: '', service_description: '', quantity: 1, unit_price: 0, line_total: 0 }
   ]);
 
+  // Boost mode
+  const [boostEnabled, setBoostEnabled] = useState(false);
+  const [boostData, setBoostData] = useState({
+    serviceName: '',
+    periodStart: '',
+    periodEnd: '',
+    spentDollars: '',
+    bankRate: '',
+  });
+
+  const boostCalc = useMemo(() => {
+    const dollars = parseFloat(boostData.spentDollars) || 0;
+    const rate = parseFloat(boostData.bankRate) || 0;
+    const equivalentGEL = dollars * rate;
+    const workCompensation = equivalentGEL * 1.2;
+    return { equivalentGEL, workCompensation };
+  }, [boostData.spentDollars, boostData.bankRate]);
+
   useEffect(() => {
     fetchData();
     handleGenerateId();
@@ -49,10 +66,8 @@ const CreateInvoice = () => {
         supabase.from('clients').select('*').eq('status', 'active').order('company'),
         supabase.from('performers').select('*').order('name')
       ]);
-
       if (clientsRes.error) throw clientsRes.error;
       if (performersRes.error) throw performersRes.error;
-
       setClients(clientsRes.data || []);
       setPerformers(performersRes.data || []);
     } catch (error) {
@@ -93,6 +108,12 @@ const CreateInvoice = () => {
   const removeItem = (index) => items.length > 1 ? setItems(items.filter((_, i) => i !== index)) : toast({variant: "destructive", title: "შეცდომა", description: "მინიმუმ ერთი სერვისი უნდა იყოს დამატებული."});
 
   const calculateTotals = () => {
+    if (boostEnabled) {
+      const subtotal = boostCalc.workCompensation;
+      const tax_amount = subtotal * (parseFloat(formData.tax_rate) / 100);
+      const total = Math.floor(subtotal + tax_amount);
+      return { subtotal, tax_amount, total };
+    }
     const subtotal = items.reduce((sum, item) => sum + (parseFloat(item.line_total) || 0), 0);
     const tax_amount = subtotal * (parseFloat(formData.tax_rate) / 100);
     const total = subtotal + tax_amount;
@@ -105,6 +126,10 @@ const CreateInvoice = () => {
     if (!formData.client_id || !formData.performer_id) { toast({variant: "destructive", title: "შეცდომა", description: "აირჩიეთ კლიენტი და შემსრულებელი."}); return false; }
     if (!/^IN#\d{7}$/.test(formData.invoice_number)) { toast({variant: "destructive", title: "შეცდომა", description: "არასწორი ინვოისის ნომერი."}); return false; }
     if (!formData.invoice_date || !formData.due_date) { toast({variant: "destructive", title: "შეცდომა", description: "მიუთითეთ თარიღები."}); return false; }
+    if (boostEnabled) {
+      if (!boostData.spentDollars || !boostData.bankRate) { toast({variant: "destructive", title: "შეცდომა", description: "შეავსეთ Boost-ის ველები."}); return false; }
+      return true;
+    }
     for(const item of items) {
         if (!item.description.trim()) { toast({variant: "destructive", title: "შეცდომა", description: "შეავსეთ სერვისის ძირითადი დასახელება."}); return false; }
         if (item.quantity <= 0 || item.unit_price < 0) { toast({variant: "destructive", title: "შეცდომა", description: "რაოდენობა და ფასი უნდა იყოს დადებითი."}); return false; }
@@ -121,36 +146,52 @@ const CreateInvoice = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("მომხმარებელი არ არის ავტორიზებული");
 
-      const { data: invoice, error: invoiceError } = await supabase
-        .from('invoices')
-        .insert([{
+      const insertPayload = {
           ...formData,
           user_id: user.id,
           subtotal: totals.subtotal,
           tax_amount: totals.tax_amount,
           total: totals.total,
-          amount: totals.total, // Keep for backward compatibility where amount is required
-          line_items_count: items.length,
+          amount: totals.total,
+          line_items_count: boostEnabled ? 0 : items.length,
           status: formData.is_draft ? 'draft' : 'pending',
           payment_status: 'unpaid',
           created_at: new Date().toISOString()
-        }])
+      };
+
+      if (boostEnabled) {
+          insertPayload.boost_data = {
+              serviceName: boostData.serviceName,
+              periodStart: boostData.periodStart,
+              periodEnd: boostData.periodEnd,
+              spentDollars: parseFloat(boostData.spentDollars),
+              bankRate: parseFloat(boostData.bankRate),
+              equivalentGEL: boostCalc.equivalentGEL,
+              workCompensation: boostCalc.workCompensation,
+          };
+      }
+
+      const { data: invoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .insert([insertPayload])
         .select()
         .single();
 
       if (invoiceError) throw invoiceError;
       
-      const invoiceItems = items.map(item => ({ 
-          invoice_id: invoice.id, 
-          description: item.description, 
-          service_description: item.service_description,
-          quantity: item.quantity, 
-          unit_price: item.unit_price, 
-          line_total: item.line_total,
-          amount: item.line_total
-      }));
-      const { error: itemsError } = await supabase.from('invoice_items').insert(invoiceItems);
-      if (itemsError) throw itemsError;
+      if (!boostEnabled) {
+        const invoiceItems = items.map(item => ({ 
+            invoice_id: invoice.id, 
+            description: item.description, 
+            service_description: item.service_description,
+            quantity: item.quantity, 
+            unit_price: item.unit_price, 
+            line_total: item.line_total,
+            amount: item.line_total
+        }));
+        const { error: itemsError } = await supabase.from('invoice_items').insert(invoiceItems);
+        if (itemsError) throw itemsError;
+      }
 
       toast({ title: "ინვოისი შეიქმნა", description: "ინვოისი წარმატებით შეიქმნა." });
       navigate(`/invoices/${invoice.id}`);
@@ -179,9 +220,16 @@ const CreateInvoice = () => {
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-4">
                     <h2 className="text-xl font-bold text-slate-900">ინვოისის დეტალები</h2>
-                    <div className="flex items-center gap-2">
-                        <Switch id="draft_toggle" checked={formData.is_draft} onCheckedChange={(c) => setFormData({...formData, is_draft: c})} />
-                        <Label htmlFor="draft_toggle" className="text-slate-600 font-bold cursor-pointer">შენახვა დრაფტად</Label>
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                            <Zap className={`h-4 w-4 ${boostEnabled ? 'text-amber-600' : 'text-slate-400'}`} />
+                            <Switch id="boost_toggle" checked={boostEnabled} onCheckedChange={setBoostEnabled} />
+                            <Label htmlFor="boost_toggle" className="text-slate-600 font-bold cursor-pointer">Boost</Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Switch id="draft_toggle" checked={formData.is_draft} onCheckedChange={(c) => setFormData({...formData, is_draft: c})} />
+                            <Label htmlFor="draft_toggle" className="text-slate-600 font-bold cursor-pointer">შენახვა დრაფტად</Label>
+                        </div>
                     </div>
                 </div>
 
@@ -232,8 +280,44 @@ const CreateInvoice = () => {
                     </div>
                 </div>
               </div>
-              
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-lg shadow-sm border p-6">
+
+              {boostEnabled ? (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg shadow-sm border border-amber-200 p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Zap className="h-5 w-5 text-amber-600" />
+                  <h2 className="text-xl font-bold text-slate-900">Boost</h2>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-xs font-semibold">მომსახურების დასახელება</Label>
+                    <Input value={boostData.serviceName} onChange={(e) => setBoostData({...boostData, serviceName: e.target.value})} className="mt-1 bg-white" placeholder="რეკლამის მართვისა და ოპტიმიზაციის მომსახურება" />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs font-semibold">პერიოდი - დან</Label>
+                      <Input type="date" value={boostData.periodStart} onChange={(e) => setBoostData({...boostData, periodStart: e.target.value})} className="mt-1 bg-white" />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold">პერიოდი - მდე</Label>
+                      <Input type="date" value={boostData.periodEnd} onChange={(e) => setBoostData({...boostData, periodEnd: e.target.value})} className="mt-1 bg-white" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold">გახარჯული დოლარი ($)</Label>
+                    <Input type="number" step="0.01" value={boostData.spentDollars} onChange={(e) => setBoostData({...boostData, spentDollars: e.target.value})} className="mt-1 bg-white" placeholder="0.00" />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold">ბანკის კომერციული კურსი</Label>
+                    <Input type="number" step="0.0001" value={boostData.bankRate} onChange={(e) => setBoostData({...boostData, bankRate: e.target.value})} className="mt-1 bg-white" placeholder="0.0000" />
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border border-amber-100 space-y-2">
+                    <div className="flex justify-between text-sm"><span className="text-slate-600">ექვ. ლარში</span><span className="font-mono font-bold">{boostCalc.equivalentGEL.toFixed(2)} ₾</span></div>
+                    <div className="flex justify-between text-sm border-t pt-2"><span className="text-slate-600">სამუშაოს ანაზღაურება (+20%)</span><span className="font-mono font-bold text-amber-700">{boostCalc.workCompensation.toFixed(2)} ₾</span></div>
+                  </div>
+                </div>
+              </motion.div>
+              ) : (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-lg shadow-sm border p-6">
                     <h2 className="text-xl font-bold text-slate-900 mb-4">სერვისები/პროდუქტები</h2>
                     <div className="space-y-4">
                     {items.map((item, index) => (
@@ -272,6 +356,7 @@ const CreateInvoice = () => {
                     </div>
                     <Button type="button" onClick={addItem} variant="outline" size="sm" className="mt-4"><Plus className="h-4 w-4 mr-2" />დაამატე მომსახურება</Button>
                 </motion.div>
+              )}
 
               <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 font-sans">
                   <div className="mb-4 pb-4 border-b border-slate-100">

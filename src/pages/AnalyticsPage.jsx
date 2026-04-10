@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import Navbar from '@/components/Navbar';
 import RevenueDynamicsSection from '@/components/RevenueDynamicsSection';
 import EnhancedMonthlyRevenueChart from '@/components/EnhancedMonthlyRevenueChart';
+import AnalyticsOverview from '@/components/AnalyticsOverview';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 const AnalyticsPage = () => {
@@ -24,6 +25,11 @@ const AnalyticsPage = () => {
             </div>
 
             <div className="space-y-8">
+              {/* Overview Section */}
+              <ErrorBoundary>
+                <AnalyticsOverview />
+              </ErrorBoundary>
+
               <ErrorBoundary>
                 <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
                     <RevenueDynamicsSection />

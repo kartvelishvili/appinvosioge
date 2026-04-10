@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 
+const POLL_INTERVAL = 30000; // 30 seconds
+
 export const useDots = () => {
   const { user, loading: authLoading } = useAuth();
   const [dotsData, setDotsData] = useState(null);
@@ -9,7 +11,7 @@ export const useDots = () => {
   const [error, setError] = useState(null);
 
   const fetchUserDots = useCallback(async () => {
-    if (authLoading) return; // Wait for auth to initialize
+    if (authLoading) return;
     
     if (!user) {
       setDotsData(null);
@@ -18,7 +20,6 @@ export const useDots = () => {
     }
     
     try {
-      setLoading(true);
       setError(null);
       
       let { data, error } = await supabase
@@ -29,7 +30,6 @@ export const useDots = () => {
 
       if (error) throw error;
 
-      // If no data exists, create default entry (fallback if trigger missed)
       if (!data) {
         const { data: newData, error: insertError } = await supabase
           .from('user_dots')
@@ -54,32 +54,6 @@ export const useDots = () => {
     }
   }, [user, authLoading]);
 
-  const subscribeToDotsUpdates = useCallback(() => {
-    if (!user) return;
-
-    const subscription = supabase
-      .channel('user_dots_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'user_dots',
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          if (payload.new) {
-            setDotsData(payload.new);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [user]);
-
   const calculateNextDotDate = useCallback(() => {
     if (!dotsData?.last_dot_added) return null;
     const lastDate = new Date(dotsData.last_dot_added);
@@ -89,18 +63,17 @@ export const useDots = () => {
   }, [dotsData]);
 
   const formatDotsDisplay = useCallback((count) => {
-    // Limit visual dots to prevent UI breaking, e.g., max 20 dots visually
     const displayCount = Math.min(count || 0, 20);
     return '•'.repeat(displayCount);
   }, []);
 
   useEffect(() => {
     fetchUserDots();
-    const unsubscribe = subscribeToDotsUpdates();
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [fetchUserDots, subscribeToDotsUpdates]);
+
+    // Polling instead of Supabase Realtime
+    const interval = setInterval(fetchUserDots, POLL_INTERVAL);
+    return () => clearInterval(interval);
+  }, [fetchUserDots]);
 
   return {
     dotsData,

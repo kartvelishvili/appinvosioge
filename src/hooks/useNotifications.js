@@ -33,13 +33,9 @@ export const useNotifications = () => {
 
   useEffect(() => {
     if (!user) return;
-    const subscription = supabase
-      .channel('notifications')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, 
-      () => { retry(); })
-      .subscribe();
-
-    return () => { subscription.unsubscribe(); };
+    // Polling instead of Supabase Realtime (every 15 seconds)
+    const interval = setInterval(retry, 15000);
+    return () => clearInterval(interval);
   }, [user, retry]);
 
   const markAsRead = useCallback(async (notificationId) => {

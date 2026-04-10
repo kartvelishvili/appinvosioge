@@ -53,22 +53,43 @@ export const downloadContractPDF = (contract, clientName, performerName) => {
 
 export const downloadInvoicePDF = (element, invoiceNumber) => {
   if (!element) return Promise.reject(new Error("No element provided"));
-  
-  const originalStyle = element.style.cssText;
-  element.style.maxHeight = '297mm';
-  element.style.overflow = 'hidden';
 
   const cleanInvoiceNumber = invoiceNumber ? invoiceNumber.replace(/^IN#/, '') : 'unknown';
+  
+  // Temporarily force A4 height so the PDF is always exactly 1 page
+  const origMinH = element.style.minHeight;
+  const origH = element.style.height;
+  const origOverflow = element.style.overflow;
+  element.style.height = '297mm';
+  element.style.minHeight = '297mm';
+  element.style.overflow = 'hidden';
+
+  const scale = 2;
 
   const opt = {
     margin: 0,
     filename: `invoice-${cleanInvoiceNumber}.pdf`,
     image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, logging: false },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    html2canvas: { 
+      scale,
+      useCORS: true, 
+      logging: false,
+      width: element.scrollWidth,
+      height: element.scrollHeight,
+      onclone: (clonedDoc) => {
+        const style = clonedDoc.createElement('style');
+        style.textContent = '* { letter-spacing: 0.02em !important; }';
+        clonedDoc.head.appendChild(style);
+      },
+    },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    pagebreak: { mode: [] }
   };
 
   return html2pdf().from(element).set(opt).save().then(() => {
-    element.style.cssText = originalStyle;
+    // Restore original styles
+    element.style.height = origH;
+    element.style.minHeight = origMinH;
+    element.style.overflow = origOverflow;
   });
 };

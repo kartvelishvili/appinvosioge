@@ -57,7 +57,7 @@ const ClientInvoicesTab = ({ invoices }) => {
                     {parseFloat(invoice.amount).toLocaleString()} {invoice.currency}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <DateCell date={invoice.issue_date} />
+                    <DateCell date={invoice.invoice_date} />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
                     <DateCell date={invoice.due_date} />

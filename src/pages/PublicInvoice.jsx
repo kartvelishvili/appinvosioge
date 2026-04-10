@@ -16,11 +16,10 @@ const PublicInvoice = () => {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     
-    // Default Settings (Read only from DB)
+    // Default Settings
     const [settings, setSettings] = useState({
         show_phone: true,
-        show_signature: true,
-        boost_mode: false
+        show_signature: true
     });
 
     const invoiceRef = useRef(null);
@@ -33,22 +32,14 @@ const PublicInvoice = () => {
         setLoading(true);
         try {
             const [invoiceRes, itemsRes] = await Promise.all([
-                supabase.from('invoices').select('*, clients(*), performers(*), contracts(*)').eq('id', id).single(),
+                supabase.from('invoices').select('*, clients(*), performers(*)').eq('id', id).maybeSingle(),
                 supabase.from('invoice_items').select('*').eq('invoice_id', id)
             ]);
 
             if (invoiceRes.error) throw invoiceRes.error;
+            if (!invoiceRes.data) throw new Error('not found');
             setInvoice(invoiceRes.data);
             setItems(itemsRes.data || []);
-            
-            // Initialize settings from DB or defaults
-            const dbSettings = invoiceRes.data.settings || {};
-            
-            setSettings({
-                show_phone: dbSettings.show_phone !== undefined ? dbSettings.show_phone : true,
-                show_signature: dbSettings.show_signature !== undefined ? dbSettings.show_signature : true,
-                boost_mode: dbSettings.boost_mode !== undefined ? dbSettings.boost_mode : (!!invoiceRes.data.boost_data)
-            });
 
         } catch (error) {
             toast({ variant: "destructive", title: "შეცდომა", description: "ინვოისი ვერ მოიძებნა." });
@@ -60,30 +51,29 @@ const PublicInvoice = () => {
     const handleDownloadPDF = () => {
         const element = invoiceRef.current;
         if (!element) return;
-        
-        // Enforce max height for PDF generation to attempt single page limit
-        const originalStyle = element.style.cssText;
-        element.style.maxHeight = '297mm';
-        element.style.overflow = 'hidden';
+
+        const scale = 2;
+        const canvasW = element.scrollWidth * scale;
+        const canvasH = element.scrollHeight * scale;
+        const pdfW = canvasW * 25.4 / (96 * scale);
+        const pdfH = canvasH * 25.4 / (96 * scale);
       
         const opt = {
           margin: 0,
           filename: `${invoice.invoice_number}.pdf`,
           image: { type: 'jpeg', quality: 0.98 },
           html2canvas: { 
-            scale: 2, 
+            scale,
             useCORS: true, 
             logging: false,
-            height: 1123, // A4 height in pixels at 96 DPI is approx 1123
-            windowHeight: 1123,
+            width: element.scrollWidth,
+            height: element.scrollHeight,
           },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          jsPDF: { unit: 'mm', format: [pdfW, pdfH], orientation: 'portrait' },
+          pagebreak: { mode: [] }
         };
       
-        html2pdf().from(element).set(opt).save().then(() => {
-             // Restore styles
-             element.style.cssText = originalStyle;
-        });
+        html2pdf().from(element).set(opt).save();
     };
 
     const handlePrint = () => {
@@ -120,15 +110,19 @@ const PublicInvoice = () => {
                       body, .print-container { background: white !important; }
                       .no-print { display: none !important; }
                       
+                      .print-container { min-height: unset !important; padding: 0 !important; margin: 0 !important; height: auto !important; background: white !important; }
                       .invoice-wrapper {
-                          height: 297mm !important; /* Force single page height */
-                          overflow: hidden !important; /* Hide overflow */
+                          height: 297mm !important;
+                          max-height: 297mm !important;
+                          overflow: hidden !important;
                           box-shadow: none !important;
                           border: none !important;
                           margin: 0 !important;
+                          padding: 0 !important;
                           width: 210mm !important;
                           max-width: 210mm !important;
                       }
+                      .invoice-template-container { height: 297mm !important; max-height: 297mm !important; overflow: hidden !important; }
                     }
                 `}</style>
             </Helmet>
@@ -165,7 +159,6 @@ const PublicInvoice = () => {
                             innerRef={invoiceRef} 
                             showClientPhone={settings.show_phone}
                             showSignature={settings.show_signature}
-                            isBoostView={settings.boost_mode}
                         />
                     </motion.div>
                 </div>

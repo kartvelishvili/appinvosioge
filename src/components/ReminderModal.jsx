@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
+import api from '@/lib/api';
 import { Clock, Mail, MessageSquare, Save, Eye, Zap, Loader2 } from 'lucide-react';
 import { normalizePhoneNumber } from '@/utils/sendSMSCampaign';
 
@@ -102,10 +103,7 @@ const ReminderModal = ({ isOpen, onClose, invoice }) => {
                  const subject = replaceVariables(template.subject);
                  const htmlContent = `<div style="font-family: sans-serif; line-height: 1.6;">${content.replace(/\n/g, '<br/>')}</div>`;
                  
-                 const { error } = await supabase.functions.invoke('send-email', {
-                    body: { recipients: [invoice.clients.email], subject, html: htmlContent }
-                });
-                if (error) throw error;
+                 await api.post('/api/send-email', { recipients: [invoice.clients.email], subject, html: htmlContent });
                 
                 await supabase.from('reminders_log').insert({ 
                     invoice_id: invoice.id, 
@@ -120,12 +118,8 @@ const ReminderModal = ({ isOpen, onClose, invoice }) => {
                  const phone = normalizePhoneNumber(invoice.clients?.phone);
                  if (!phone) throw new Error("კლიენტს არ აქვს ვალიდური ტელეფონი");
                  
-                 const { data, error } = await supabase.functions.invoke('send-sms', {
-                    body: JSON.stringify({ numbers: [phone], message: content })
-                });
-
-                if (error) throw error;
-                if (data.success === false) throw new Error(data.details || 'SMS service provider error');
+                 const smsResult = await api.post('/api/send-sms', { numbers: [phone], message: content });
+                 if (!smsResult.success) throw new Error(smsResult.details || smsResult.error || 'SMS service error');
 
                 await supabase.from('reminders_log').insert({ 
                     invoice_id: invoice.id, 

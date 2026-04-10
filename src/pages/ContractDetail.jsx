@@ -8,6 +8,7 @@ import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
+import api from '@/lib/api';
 import html2pdf from 'html2pdf.js';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { normalizePhoneNumber } from '@/utils/sendSMSCampaign';
@@ -177,13 +178,11 @@ const ContractDetail = () => {
         // --- EMAIL SENDING ---
         // Email to Client
         if(contract.clients?.email) {
-            await supabase.functions.invoke('send-email', {
-                body: { 
+            await api.post('/api/send-email', { 
                     recipients: [contract.clients.email], 
                     subject: 'ხელშეკრულება ხელმოწერისთვის', 
                     html: `<p>გთხოვთ ხელი მოაწეროთ ხელშეკრულებას ბმულზე: <a href="${clientLink}">ხელმოწერა</a></p>` 
-                }
-            });
+                });
         }
         
         // --- SMS SENDING ---
@@ -194,9 +193,10 @@ const ContractDetail = () => {
         if(clientPhone) {
             const msg = `გთხოვთ ხელი მოაწეროთ ხელშეკრულებას: ${clientLink}`;
             // Send SMS via Edge Function
-            const smsReq = supabase.functions.invoke('send-sms', {
-                body: { numbers: [clientPhone], message: msg }
-            }).then(async (res) => {
+            const smsReq = api.post('/api/send-sms', { numbers: [clientPhone], message: msg })
+            .then(() => ({ error: null }))
+            .catch(e => ({ error: e }))
+            .then(async (res) => {
                 // Log to History
                 await supabase.from('sms_history').insert({
                     contract_id: id,

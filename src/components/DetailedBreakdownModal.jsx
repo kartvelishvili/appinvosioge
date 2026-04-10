@@ -25,7 +25,7 @@ const DetailedBreakdownModal = ({ isOpen, onClose, data }) => {
     if (sortBy === 'amount') return b.total_amount - a.total_amount;
     if (sortBy === 'status') return a.calculatedStatus.localeCompare(b.calculatedStatus);
     // date
-    return new Date(b.issue_date || b.created_at) - new Date(a.issue_date || a.created_at);
+    return new Date(b.invoice_date || b.created_at) - new Date(a.invoice_date || a.created_at);
   });
 
   return (
@@ -100,7 +100,7 @@ const DetailedBreakdownModal = ({ isOpen, onClose, data }) => {
                           {getStatusBadge(inv.calculatedStatus)}
                         </div>
                         <p className="text-sm font-medium text-slate-600">{inv.clients?.company_name || inv.clients?.name}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">{format(new Date(inv.issue_date || inv.created_at), 'dd MMM yyyy', { locale: ka })}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{format(new Date(inv.invoice_date || inv.created_at), 'dd MMM yyyy', { locale: ka })}</p>
                       </div>
                     </div>
                     <div className="text-right">

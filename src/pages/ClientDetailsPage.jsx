@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Edit, CheckCircle, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Edit, CheckCircle, AlertCircle, FileText, TrendingUp, Clock, DollarSign } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -54,7 +54,7 @@ const ClientDetailsPage = () => {
         .from('invoices')
         .select('*')
         .eq('client_id', id)
-        .order('issue_date', { ascending: false });
+        .order('invoice_date', { ascending: false });
 
       if (invError) throw invError;
       setInvoices(invoiceData || []);
@@ -91,15 +91,20 @@ const ClientDetailsPage = () => {
   if (!client) return <div>კლიენტი არ მოიძებნა</div>;
 
   const totalInvoices = invoices.length;
-  // Stats calculation based on Paid/Unpaid only
-  const totalPaid = invoices.filter(i => i.payment_status === 'paid').reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
-  const totalOutstanding = invoices.filter(i => i.payment_status !== 'paid').reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+  const paidInvoices = invoices.filter(i => i.payment_status === 'paid');
+  const unpaidInvoices = invoices.filter(i => i.payment_status !== 'paid');
+  const overdueInvoices = unpaidInvoices.filter(i => new Date() > new Date(i.due_date));
+  const totalPaid = paidInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount || inv.total || 0), 0);
+  const totalOutstanding = unpaidInvoices.reduce((sum, inv) => sum + parseFloat(inv.amount || inv.total || 0), 0);
   
   const stats = {
     totalInvoices,
+    paidCount: paidInvoices.length,
+    unpaidCount: unpaidInvoices.length,
+    overdueCount: overdueInvoices.length,
     totalPaid,
     totalOutstanding,
-    averagePaymentTime: 0 // Placeholder
+    averagePaymentTime: 0
   };
 
   return (
@@ -110,7 +115,7 @@ const ClientDetailsPage = () => {
       <div className="min-h-screen bg-slate-50 pb-20">
         <Navbar />
         
-        <div className="bg-white border-b border-slate-200 pt-8 pb-12 px-4 sm:px-6 lg:px-8 shadow-sm">
+        <div className="bg-white border-b border-slate-200 pt-8 pb-6 px-4 sm:px-6 lg:px-8 shadow-sm">
             <div className="max-w-7xl mx-auto">
                 <Button 
                     variant="ghost" 
@@ -151,6 +156,42 @@ const ClientDetailsPage = () => {
                          </Button>
                     </div>
                 </div>
+
+                {/* Quick Stats Bar */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FileText className="h-4 w-4 text-indigo-500" />
+                      <span className="text-xs font-medium text-slate-500">სულ ინვოისები</span>
+                    </div>
+                    <div className="text-2xl font-black text-slate-900">{stats.totalInvoices}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{stats.paidCount} გადახდილი • {stats.unpaidCount} გადასახდელი</div>
+                  </div>
+                  <div className="bg-green-50 rounded-xl p-4 border border-green-100">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <span className="text-xs font-medium text-green-600">გადახდილი</span>
+                    </div>
+                    <div className="text-2xl font-black text-green-700">{stats.totalPaid.toLocaleString()} ₾</div>
+                    <div className="text-xs text-green-500 mt-0.5">{stats.paidCount} ინვოისი</div>
+                  </div>
+                  <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Clock className="h-4 w-4 text-orange-500" />
+                      <span className="text-xs font-medium text-orange-600">გადასახდელი</span>
+                    </div>
+                    <div className="text-2xl font-black text-orange-700">{stats.totalOutstanding.toLocaleString()} ₾</div>
+                    <div className="text-xs text-orange-500 mt-0.5">{stats.unpaidCount} ინვოისი</div>
+                  </div>
+                  <div className={`rounded-xl p-4 border ${stats.overdueCount > 0 ? 'bg-red-50 border-red-100' : 'bg-slate-50 border-slate-100'}`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <AlertCircle className={`h-4 w-4 ${stats.overdueCount > 0 ? 'text-red-500' : 'text-slate-400'}`} />
+                      <span className={`text-xs font-medium ${stats.overdueCount > 0 ? 'text-red-600' : 'text-slate-500'}`}>ვადაგადაცილებული</span>
+                    </div>
+                    <div className={`text-2xl font-black ${stats.overdueCount > 0 ? 'text-red-700' : 'text-slate-400'}`}>{stats.overdueCount}</div>
+                    <div className={`text-xs mt-0.5 ${stats.overdueCount > 0 ? 'text-red-500' : 'text-slate-400'}`}>ინვოისი</div>
+                  </div>
+                </div>
             </div>
         </div>
 
@@ -183,6 +224,7 @@ const ClientDetailsPage = () => {
                      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
                             <h2 className="text-lg font-bold text-slate-900">სრული ისტორია</h2>
+                            <span className="text-sm text-slate-400">{invoices.length} ინვოისი</span>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="min-w-full divide-y divide-slate-100">
@@ -193,7 +235,7 @@ const ClientDetailsPage = () => {
                                         <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">შექმნის თარიღი</th>
                                         <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">გადახდის ვადა</th>
                                         <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">სტატუსი</th>
-                                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">გადახდის თარიღი / დაგვიანება</th>
+                                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">დაგვიანება</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -204,9 +246,9 @@ const ClientDetailsPage = () => {
                                             : 0;
 
                                         return (
-                                            <tr key={inv.id} className="hover:bg-slate-50">
+                                            <tr key={inv.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => navigate(`/invoices/${inv.id}`)}>
                                                 <td className="px-6 py-4 text-sm font-mono font-bold text-indigo-600">{inv.invoice_number}</td>
-                                                <td className="px-6 py-4 text-sm font-bold text-slate-700">{parseFloat(inv.amount || 0).toLocaleString()} ₾</td>
+                                                <td className="px-6 py-4 text-sm font-bold text-slate-700">{parseFloat(inv.amount || inv.total || 0).toLocaleString()} ₾</td>
                                                 <td className="px-6 py-4 text-sm text-slate-500">{formatDateDDMMYYYY(inv.created_at)}</td>
                                                 <td className="px-6 py-4 text-sm text-slate-500">{formatDateDDMMYYYY(inv.due_date)}</td>
                                                 <td className="px-6 py-4">
@@ -217,9 +259,9 @@ const ClientDetailsPage = () => {
                                                 </td>
                                                 <td className="px-6 py-4 text-sm">
                                                     {isPaid ? (
-                                                        <span className="text-green-600 font-medium">{formatDateDDMMYYYY(inv.paid_date)}</span>
+                                                        <span className="text-green-600 font-medium">-</span>
                                                     ) : (
-                                                        daysOverdue > 0 ? <span className="text-red-600 font-bold">{daysOverdue} დღე გადაცილება</span> : <span className="text-slate-400">-</span>
+                                                        daysOverdue > 0 ? <span className="text-red-600 font-bold">{daysOverdue} დღე</span> : <span className="text-slate-400">-</span>
                                                     )}
                                                 </td>
                                             </tr>

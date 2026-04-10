@@ -4,6 +4,7 @@ import { Helmet } from 'react-helmet';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
+import api from '@/lib/api';
 import { CheckCircle, AlertTriangle, PenTool } from 'lucide-react';
 import { normalizePhoneNumber } from '@/utils/sendSMSCampaign';
 
@@ -76,20 +77,18 @@ const ContractSigning = () => {
                  const msg = `${currentContractState.clients.name}-მა ხელი მოაწერა ხელშეკრულებას. გთხოვთ თქვენც ხელი მოაწეროთ: ${provLink}`;
                  
                  if(provPhone) {
-                    await supabase.functions.invoke('send-sms', { body: { numbers: [provPhone], message: msg } });
+                    await api.post('/api/send-sms', { numbers: [provPhone], message: msg });
                     await supabase.from('sms_history').insert({
                         contract_id: id, recipient_type: 'performer', recipient_phone: provPhone, recipient_name: currentContractState.performers.legal_name,
                         message: msg, status: 'sent'
                     });
                  }
                  if(currentContractState.performers.email) {
-                     await supabase.functions.invoke('send-email', {
-                        body: { 
+                     await api.post('/api/send-email', { 
                             recipients: [currentContractState.performers.email], 
                             subject: 'დამკვეთმა ხელი მოაწერა ხელშეკრულებას', 
                             html: `<p>დამკვეთმა ხელი მოაწერა. გთხოვთ თქვენც ხელი მოაწეროთ: <a href="${provLink}">ხელმოწერა</a></p>` 
-                        }
-                    });
+                        });
                  }
             }
 
@@ -100,20 +99,18 @@ const ContractSigning = () => {
                  const msg = `${currentContractState.performers.legal_name}-მა ხელი მოაწერა ხელშეკრულებას. ხელშეკრულება დასრულდა!`;
                  
                  if(clientPhone) {
-                    await supabase.functions.invoke('send-sms', { body: { numbers: [clientPhone], message: msg } });
+                    await api.post('/api/send-sms', { numbers: [clientPhone], message: msg });
                     await supabase.from('sms_history').insert({
                         contract_id: id, recipient_type: 'client', recipient_phone: clientPhone, recipient_name: currentContractState.clients.name,
                         message: msg, status: 'sent'
                     });
                  }
                  if(currentContractState.clients.email) {
-                     await supabase.functions.invoke('send-email', {
-                        body: { 
+                     await api.post('/api/send-email', { 
                             recipients: [currentContractState.clients.email], 
                             subject: 'შემსრულებელმა ხელი მოაწერა ხელშეკრულებას', 
                             html: `<p>შემსრულებელმა ხელი მოაწერა. ხელშეკრულება დასრულდა.</p>` 
-                        }
-                    });
+                        });
                  }
             }
         

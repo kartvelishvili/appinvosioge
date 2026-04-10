@@ -137,7 +137,9 @@ const InvoiceDetail = () => {
               body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
               body, .print-container { background: white !important; }
               .no-print { display: none !important; }
-              .invoice-wrapper { height: 297mm !important; overflow: hidden !important; box-shadow: none !important; border: none !important; margin: 0 !important; width: 210mm !important; max-width: 210mm !important; }
+              .print-container { min-height: unset !important; padding: 0 !important; margin: 0 !important; height: auto !important; background: white !important; }
+              .invoice-wrapper { height: 297mm !important; max-height: 297mm !important; overflow: hidden !important; box-shadow: none !important; border: none !important; margin: 0 !important; padding: 0 !important; width: 210mm !important; max-width: 210mm !important; }
+              .invoice-template-container { height: 297mm !important; max-height: 297mm !important; overflow: hidden !important; }
             }
          `}</style>
       </Helmet>

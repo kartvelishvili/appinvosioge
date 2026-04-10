@@ -25,7 +25,6 @@ const InvoiceTemplate = ({
   } = invoice;
 
   const signatureUrl = contract?.performer_signature_url || performer?.signature_url;
-  const formattedTotalAmount = (total || 0).toFixed(2);
   const issueDate = invoice.invoice_date || invoice.created_at;
   const dueDate = invoice.due_date;
 
@@ -40,13 +39,38 @@ const InvoiceTemplate = ({
 
   const publicInvoiceUrl = `${window.location.origin}/invoices/${invoice.id}/public`;
   
-  // Use performer bank account string if settings JSON isn't available
-  const bankAccounts = performer?.bank_account ? [{ bank_id: 'ბანკი', account_number: performer.bank_account }] : [];
+  // Use performer bank account string - detect bank from IBAN prefix
+  const detectBankId = (iban) => {
+    const clean = (iban || '').replace(/\s/g, '').toUpperCase();
+    if (clean.length >= 6 && clean.startsWith('GE')) {
+      const code = clean.substring(4, 6);
+      if (code === 'TB') return 'tbc';
+      if (code === 'BG') return 'bog';
+    }
+    return 'ბანკი';
+  };
+  const bankAccounts = performer?.bank_account 
+    ? [{ bank_id: detectBankId(performer.bank_account), account_number: performer.bank_account }] 
+    : [];
+
+  // Boost data
+  const boostData = invoice.boost_data;
+  const isBoost = !!boostData;
+  const formattedTotalAmount = isBoost ? Math.floor(total || 0).toString() : (total || 0).toFixed(2);
+
+  const formatBoostDate = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
+  };
 
   return (
     <div 
       ref={innerRef} 
-      className="bg-white max-w-[210mm] mx-auto text-[#1e293b] font-sans shadow-none flex flex-col relative invoice-template-container print:m-0 print:border-none print:shadow-none" 
+      className="bg-white w-[210mm] max-w-[210mm] mx-auto text-[#1e293b] font-sans shadow-none flex flex-col relative invoice-template-container print:m-0 print:border-none print:shadow-none" 
       style={{ minHeight: '297mm', position: 'relative' }} 
     >
       <div className="bg-[#f0f9ff] border-b-2 border-[#2563eb] px-8 py-5 print:bg-[#f0f9ff] print:border-[#2563eb]" style={{ WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact' }}>
@@ -85,7 +109,7 @@ const InvoiceTemplate = ({
         <div className="flex justify-between items-end mb-8 border-b border-dashed border-slate-200 pb-4">
              <div>
                  <h1 className="text-4xl font-black text-[#1e3a8a] uppercase tracking-tighter leading-none mb-1">ინვოისი</h1>
-                 <p className="text-slate-400 font-mono text-sm font-medium pl-0.5">#{invoice.invoice_number}</p>
+                 <p className="text-slate-400 font-mono text-sm font-medium pl-0.5">{invoice.invoice_number}</p>
              </div>
              <div className="flex gap-6">
                  <div className="flex flex-col items-end">
@@ -128,6 +152,50 @@ const InvoiceTemplate = ({
         )}
 
         <div className="mb-6">
+          {isBoost ? (
+            /* Boost Invoice Layout */
+            <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm" style={{ WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact' }}>
+              {/* Period header */}
+              <div className="bg-[#1e3a8a] px-5 py-3 flex items-center justify-between" style={{ WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact' }}>
+                <span className="text-[11px] font-bold text-white uppercase tracking-wide">{boostData.serviceName || 'რეკლამის მართვისა და ოპტიმიზაციის მომსახურება'}</span>
+                <span className="text-[10px] text-blue-200 font-mono">
+                  {formatBoostDate(boostData.periodStart)} — {formatBoostDate(boostData.periodEnd)}
+                </span>
+              </div>
+              {/* Boost line items */}
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-[#f0f9ff]" style={{ WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact' }}>
+                    <th className="py-2 px-5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">აღწერა</th>
+                    <th className="py-2 px-5 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider">თანხა</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  <tr>
+                    <td className="py-2.5 px-5 text-xs text-slate-700">გახარჯული რეკლამის ბიუჯეტი</td>
+                    <td className="py-2.5 px-5 text-right text-xs font-bold font-mono text-slate-800">{Number(boostData.spentDollars).toLocaleString()} $</td>
+                  </tr>
+                  <tr className="bg-[#fafbfc]" style={{ WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact' }}>
+                    <td className="py-2.5 px-5 text-xs text-slate-700">ბანკის კომერციული კურსი (USD/GEL)</td>
+                    <td className="py-2.5 px-5 text-right text-xs font-bold font-mono text-slate-800">{Number(boostData.bankRate).toFixed(4)}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-5 text-xs text-slate-700">ბიუჯეტის ექვივალენტი ლარში</td>
+                    <td className="py-2.5 px-5 text-right text-xs font-bold font-mono text-slate-800">{Number(boostData.equivalentGEL).toFixed(2)} ₾</td>
+                  </tr>
+                  <tr className="bg-[#fafbfc]" style={{ WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact' }}>
+                    <td className="py-2.5 px-5 text-xs text-slate-700">
+                      გაწეული სამუშაოს ანაზღაურება (20%)
+                    </td>
+                    <td className="py-2.5 px-5 text-right text-xs font-bold font-mono text-slate-800">
+                      {(Number(boostData.workCompensation) - Number(boostData.equivalentGEL)).toFixed(2)} ₾
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            /* Standard Invoice Table */
             <div className="overflow-hidden rounded-lg border border-[#bfdbfe]" style={{ WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact' }}>
                 <table className="w-full">
                     <thead className="bg-[#2563eb]" style={{ WebkitPrintColorAdjust: 'exact', colorAdjust: 'exact' }}>
@@ -159,6 +227,7 @@ const InvoiceTemplate = ({
                     </tbody>
                 </table>
             </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-8 items-stretch mb-4 break-inside-avoid print:break-inside-avoid">

@@ -38,7 +38,7 @@ const InvoiceCard = ({ invoice, onDownload, isDownloading }) => {
           </div>
           <div className="flex items-center gap-1 text-xs text-slate-500">
             <Calendar className="h-3 w-3" />
-            {formatDateDDMMYYYY(invoice.issue_date || invoice.created_at)}
+            {formatDateDDMMYYYY(invoice.invoice_date || invoice.created_at)}
           </div>
         </div>
         

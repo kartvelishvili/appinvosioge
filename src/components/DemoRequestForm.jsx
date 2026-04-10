@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
+import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -68,10 +69,8 @@ const DemoRequestForm = () => {
 
       if (insertError) throw insertError;
 
-      // 2. Call Edge Function to send email
-      await supabase.functions.invoke('send-demo-email', {
-        body: JSON.stringify(submissionData),
-      });
+      // 2. Call backend API to send email
+      await api.post('/api/send-demo-email', submissionData);
 
       toast({
         title: "წარმატება",

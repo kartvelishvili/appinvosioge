@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
+import api from '@/lib/api';
 import { Mail, MessageSquare, Send, Loader2 } from 'lucide-react';
 import { normalizePhoneNumber, countSmsSegments } from '@/utils/sendSMSCampaign';
 
@@ -113,10 +114,7 @@ const SendCommunicationModal = ({ isOpen, onClose, invoice, onSent }) => {
         }
         const htmlContent = `<div style="font-family: sans-serif; line-height: 1.6;">${emailBody.replace(/\n/g, '<br/>')}</div>`;
         try {
-            const { error } = await supabase.functions.invoke('send-email', {
-                body: { recipients: [invoice.clients.email], subject: emailSubject, html: htmlContent }
-            });
-            if (error) throw error;
+            await api.post('/api/send-email', { recipients: [invoice.clients.email], subject: emailSubject, html: htmlContent });
             await supabase.from('reminders_log').insert({ invoice_id: invoice.id, reminder_type: 'email', status: 'sent', sent_at: new Date().toISOString(), recipient: invoice.clients.email, template_name: emailTemplates.find(t=>t.id===selectedEmailTemplate)?.name || 'Custom' });
             toast({ title: 'Email წარმატებით გაიგზავნა' });
             onSent();
@@ -134,12 +132,8 @@ const SendCommunicationModal = ({ isOpen, onClose, invoice, onSent }) => {
             return;
         }
         try {
-            const { data, error } = await supabase.functions.invoke('send-sms', {
-                body: JSON.stringify({ numbers: [phone], message: smsBody })
-            });
-
-            if (error) throw error;
-            if (data.success === false) throw new Error(data.details || 'SMS service provider error');
+            const smsResult = await api.post('/api/send-sms', { numbers: [phone], message: smsBody });
+            if (!smsResult.success) throw new Error(smsResult.details || smsResult.error || 'SMS service error');
             
             await supabase.from('reminders_log').insert({ invoice_id: invoice.id, reminder_type: 'sms', status: 'sent', sent_at: new Date().toISOString(), recipient: phone, template_name: smsTemplates.find(t=>t.id===selectedSmsTemplate)?.name || 'Custom' });
             toast({ title: 'SMS წარმატებით გაიგზავნა' });

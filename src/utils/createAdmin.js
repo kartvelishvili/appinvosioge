@@ -1,21 +1,13 @@
-import { supabase } from '../lib/customSupabaseClient';
+import api from '@/lib/api';
 
-// This utility function invokes the edge function to create the admin user
+// This utility function calls the backend to create the admin user
 export async function createAdminUser() {
   try {
-    const { data, error } = await supabase.functions.invoke('create-admin-user', {
-      body: {}
-    });
-
-    if (error) {
-      console.error('Error invoking create-admin-user function:', error);
-      return { success: false, error };
-    }
-
+    const data = await api.post('/api/create-admin-user', {});
     console.log('Admin user creation response:', data);
     return { success: true, data };
   } catch (err) {
-    console.error('Unexpected error creating admin user:', err);
+    console.error('Error creating admin user:', err);
     return { success: false, error: err };
   }
 }

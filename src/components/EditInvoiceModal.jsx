@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, AlertTriangle, Lock } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Trash2, AlertTriangle, Lock, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 
 const EditInvoiceModal = ({ isOpen, onClose, invoice, onSave }) => {
     const { toast } = useToast();
@@ -17,6 +18,24 @@ const EditInvoiceModal = ({ isOpen, onClose, invoice, onSave }) => {
     
     const [formData, setFormData] = useState({});
     const [items, setItems] = useState([]);
+
+    // Boost mode state
+    const [boostEnabled, setBoostEnabled] = useState(false);
+    const [boostData, setBoostData] = useState({
+        serviceName: '',
+        periodStart: '',
+        periodEnd: '',
+        spentDollars: '',
+        bankRate: '',
+    });
+
+    const boostCalc = useMemo(() => {
+        const dollars = parseFloat(boostData.spentDollars) || 0;
+        const rate = parseFloat(boostData.bankRate) || 0;
+        const equivalentGEL = dollars * rate;
+        const workCompensation = equivalentGEL * 1.2;
+        return { equivalentGEL, workCompensation };
+    }, [boostData.spentDollars, boostData.bankRate]);
 
     const isPaid = invoice?.payment_status === 'paid';
 
@@ -45,6 +64,21 @@ const EditInvoiceModal = ({ isOpen, onClose, invoice, onSave }) => {
                 tax_rate: invoice.tax_rate || 0,
                 notes: invoice.notes || '',
             });
+
+            // Initialize boost data if exists
+            if (invoice.boost_data) {
+                setBoostEnabled(true);
+                setBoostData({
+                    serviceName: invoice.boost_data.serviceName || '',
+                    periodStart: invoice.boost_data.periodStart || '',
+                    periodEnd: invoice.boost_data.periodEnd || '',
+                    spentDollars: invoice.boost_data.spentDollars?.toString() || '',
+                    bankRate: invoice.boost_data.bankRate?.toString() || '',
+                });
+            } else {
+                setBoostEnabled(false);
+                setBoostData({ serviceName: '', periodStart: '', periodEnd: '', spentDollars: '', bankRate: '' });
+            }
         } catch (error) {
             toast({ variant: "destructive", title: "შეცდომა", description: "მონაცემების ჩატვირთვა ვერ მოხერხდა" });
         } finally {
@@ -76,6 +110,12 @@ const EditInvoiceModal = ({ isOpen, onClose, invoice, onSave }) => {
     };
 
     const calculateTotals = () => {
+        if (boostEnabled) {
+            const subtotal = boostCalc.workCompensation;
+            const tax_amount = subtotal * (parseFloat(formData.tax_rate || 0) / 100);
+            const total = Math.floor(subtotal + tax_amount);
+            return { subtotal, tax_amount, total };
+        }
         const subtotal = items.reduce((sum, item) => sum + (parseFloat(item.line_total) || 0), 0);
         const tax_amount = subtotal * (parseFloat(formData.tax_rate || 0) / 100);
         const total = subtotal + tax_amount;
@@ -135,7 +175,22 @@ const EditInvoiceModal = ({ isOpen, onClose, invoice, onSave }) => {
                 updatePayload.tax_amount = tax_amount;
                 updatePayload.total = total;
                 updatePayload.amount = total;
-                updatePayload.line_items_count = items.length;
+                updatePayload.line_items_count = boostEnabled ? 0 : items.length;
+
+                // Save or clear boost data
+                if (boostEnabled) {
+                    updatePayload.boost_data = {
+                        serviceName: boostData.serviceName,
+                        periodStart: boostData.periodStart,
+                        periodEnd: boostData.periodEnd,
+                        spentDollars: parseFloat(boostData.spentDollars),
+                        bankRate: parseFloat(boostData.bankRate),
+                        equivalentGEL: boostCalc.equivalentGEL,
+                        workCompensation: boostCalc.workCompensation,
+                    };
+                } else {
+                    updatePayload.boost_data = null;
+                }
             }
 
             const { error: invoiceError } = await supabase.from('invoices').update(updatePayload).eq('id', invoice.id);
@@ -143,7 +198,7 @@ const EditInvoiceModal = ({ isOpen, onClose, invoice, onSave }) => {
 
             if (!isPaid) {
                 await supabase.from('invoice_items').delete().eq('invoice_id', invoice.id);
-                if (items.length > 0) {
+                if (!boostEnabled && items.length > 0) {
                     const newItemsData = items.map(item => ({ 
                         invoice_id: invoice.id, 
                         description: item.description, 
@@ -232,7 +287,50 @@ const EditInvoiceModal = ({ isOpen, onClose, invoice, onSave }) => {
                         </div>
                     </div>
 
+                    {/* Boost Mode */}
                     {!isPaid && (
+                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border border-amber-200 p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <Zap className="h-4 w-4 text-amber-600" />
+                            <span className="font-bold text-sm text-slate-900">Boost</span>
+                          </div>
+                          <Switch checked={boostEnabled} onCheckedChange={setBoostEnabled} />
+                        </div>
+                        {boostEnabled && (
+                          <div className="space-y-3 pt-3 border-t border-amber-200">
+                            <div>
+                              <Label className="text-xs">მომსახურების დასახელება</Label>
+                              <Input value={boostData.serviceName} onChange={(e) => setBoostData({...boostData, serviceName: e.target.value})} className="mt-1 bg-white h-9" placeholder="რეკლამის მართვისა და ოპტიმიზაციის მომსახურება" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <Label className="text-xs">პერიოდი - დან</Label>
+                                <Input type="date" value={boostData.periodStart} onChange={(e) => setBoostData({...boostData, periodStart: e.target.value})} className="mt-1 bg-white h-9" />
+                              </div>
+                              <div>
+                                <Label className="text-xs">პერიოდი - მდე</Label>
+                                <Input type="date" value={boostData.periodEnd} onChange={(e) => setBoostData({...boostData, periodEnd: e.target.value})} className="mt-1 bg-white h-9" />
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-xs">გახარჯული დოლარი ($)</Label>
+                              <Input type="number" step="0.01" value={boostData.spentDollars} onChange={(e) => setBoostData({...boostData, spentDollars: e.target.value})} className="mt-1 bg-white h-9" />
+                            </div>
+                            <div>
+                              <Label className="text-xs">ბანკის კომერციული კურსი</Label>
+                              <Input type="number" step="0.0001" value={boostData.bankRate} onChange={(e) => setBoostData({...boostData, bankRate: e.target.value})} className="mt-1 bg-white h-9" />
+                            </div>
+                            <div className="bg-white rounded p-3 border border-amber-100 space-y-2 text-sm">
+                              <div className="flex justify-between"><span className="text-slate-600">ექვ. ლარში</span><span className="font-mono font-bold">{boostCalc.equivalentGEL.toFixed(2)} ₾</span></div>
+                              <div className="flex justify-between border-t pt-2"><span className="text-slate-600">სამუშაოს ანაზღაურება (+20%)</span><span className="font-mono font-bold text-amber-700">{boostCalc.workCompensation.toFixed(2)} ₾</span></div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {!isPaid && !boostEnabled && (
                         <div className="space-y-4">
                             <h3 className="font-bold">სერვისები</h3>
                             {items.map((item, index) => (

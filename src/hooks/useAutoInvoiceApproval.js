@@ -47,9 +47,9 @@ export const useAutoInvoiceApproval = () => {
           clients (id, company_name),
           performers (id, name)
         `)
-        .gte('issue_date', firstDayPrevMonth.toISOString().split('T')[0])
-        .lte('issue_date', lastDayPrevMonth.toISOString().split('T')[0])
-        .order('issue_date', { ascending: false });
+        .gte('invoice_date', firstDayPrevMonth.toISOString().split('T')[0])
+        .lte('invoice_date', lastDayPrevMonth.toISOString().split('T')[0])
+        .order('invoice_date', { ascending: false });
 
       if (error) throw error;
 

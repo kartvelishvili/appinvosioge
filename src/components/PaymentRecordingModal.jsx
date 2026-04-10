@@ -14,47 +14,20 @@ const PaymentRecordingModal = ({ isOpen, onClose, invoice, onPaymentSuccess }) =
   const handlePayment = async () => {
     setLoading(true);
     try {
-      const pDate = new Date(paymentDate);
-      const dDate = new Date(invoice.due_date);
-      
-      // Calculate delay in days
-      const diffTime = pDate - dDate;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      const paymentTiming = diffDays <= 0 ? 'on-time' : 'late';
-      const delayDays = diffDays > 0 ? diffDays : 0;
-
-      // Update invoice
+      // Update invoice payment status
       const { error: updateError } = await supabase
         .from('invoices')
         .update({
-          payment_status: 'paid',
-          paid_amount: invoice.total_amount, // Full payment
-          paid_date: paymentDate,
-          payment_delay_days: delayDays,
-          payment_timing: paymentTiming
+          payment_status: 'paid'
         })
         .eq('id', invoice.id);
 
       if (updateError) throw updateError;
 
-      // Record in history
-      const { error: historyError } = await supabase
-        .from('invoice_payments')
-        .insert({
-          invoice_id: invoice.id,
-          client_id: invoice.client_id,
-          amount: invoice.total_amount,
-          payment_date: paymentDate,
-          payment_method: 'manual'
-        });
-
-      if (historyError) throw historyError;
-
       toast({
         title: "გადახდა დაფიქსირდა",
-        description: `ინვოისი მონიშნულია როგორც გადახდილი (${paymentTiming === 'on-time' ? 'დროულად' : 'დაგვიანებით'})`,
-        className: paymentTiming === 'on-time' ? "bg-green-50 border-green-200" : "bg-orange-50 border-orange-200"
+        description: "ინვოისი მონიშნულია როგორც გადახდილი",
+        className: "bg-green-50 border-green-200"
       });
 
       if (onPaymentSuccess) onPaymentSuccess();
@@ -93,7 +66,7 @@ const PaymentRecordingModal = ({ isOpen, onClose, invoice, onPaymentSuccess }) =
           <div className="bg-slate-50 p-3 rounded-md text-sm text-slate-600">
              <div className="flex justify-between mb-1">
                 <span>გადასახდელი თანხა:</span>
-                <span className="font-bold">{parseFloat(invoice?.total_amount).toLocaleString()} {invoice?.currency}</span>
+                <span className="font-bold">{parseFloat(invoice?.total || 0).toLocaleString()} {invoice?.currency}</span>
              </div>
              <div className="flex justify-between text-xs text-slate-500">
                 <span>გადახდის ვადა:</span>

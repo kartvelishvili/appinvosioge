@@ -10,7 +10,7 @@ export const useRevenueData = (filters) => {
     const { data, error } = await supabase
       .from('invoices')
       .select('*, clients(name, company)')
-      .order('issue_date', { ascending: true });
+      .order('invoice_date', { ascending: true });
 
     if (error) throw error;
     return data || [];
@@ -34,7 +34,7 @@ export const useRevenueData = (filters) => {
     else if (filters.dateRange === 'year') startDate = startOfDay(subYears(now, 1));
 
     let filtered = invoices.filter(inv => {
-      const issueDate = new Date(inv.issue_date || inv.created_at);
+      const issueDate = new Date(inv.invoice_date || inv.created_at);
       if (filters.dateRange !== 'all') {
         if (isBefore(issueDate, startDate) || isAfter(issueDate, endDate)) return false;
       }
@@ -63,7 +63,7 @@ export const useRevenueData = (filters) => {
     const aggregatedByDate = {};
 
     filtered.forEach(inv => {
-      const amount = parseFloat(inv.total_amount || 0);
+      const amount = parseFloat(inv.total || inv.amount || 0);
       const isPaid = inv.payment_status === 'paid';
       const isOverdue = !isPaid && isBefore(new Date(inv.due_date), startOfDay(now));
       
@@ -72,7 +72,7 @@ export const useRevenueData = (filters) => {
       else unpaidAmount += amount;
       if (isOverdue) overdueAmount += amount;
 
-      const dateObj = new Date(inv.issue_date || inv.created_at);
+      const dateObj = new Date(inv.invoice_date || inv.created_at);
       let dateKey = format(dateObj, 'MMM yyyy', { locale: ka });
       if (filters.dateRange === 'week' || filters.dateRange === 'month') {
          dateKey = format(dateObj, 'dd MMM', { locale: ka });

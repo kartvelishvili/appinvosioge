@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/hooks/use-toast';
+import api from '@/lib/api';
 
 const AuthContext = createContext(undefined);
 
@@ -19,15 +20,16 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    const getSession = async () => {
+    const init = async () => {
+      // Restore Supabase session (kept for DB RLS compatibility)
       const { data: { session } } = await supabase.auth.getSession();
       handleSession(session);
     };
+    init();
 
-    getSession();
-
+    // Listen for Supabase auth state changes (triggered by setSession, signOut, etc.)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (_event, session) => {
         handleSession(session);
       }
     );
@@ -36,41 +38,60 @@ export const AuthProvider = ({ children }) => {
   }, [handleSession]);
 
   const signUp = useCallback(async (email, password, options) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options,
-    });
+    try {
+      const result = await api.post('/api/auth/signup', {
+        email,
+        password,
+        ...(options?.data || {}),
+      });
 
-    if (error) {
+      // Store our JWT
+      api.setToken(result.token);
+
+      // Set Supabase session for DB RLS compatibility
+      if (result.supabase_session) {
+        await supabase.auth.setSession(result.supabase_session);
+      }
+
+      return { error: null };
+    } catch (err) {
       toast({
         variant: "destructive",
         title: "Sign up Failed",
-        description: error.message || "Something went wrong",
+        description: err.message || "Something went wrong",
       });
+      return { error: err };
     }
-
-    return { error };
   }, [toast]);
 
   const signIn = useCallback(async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const result = await api.post('/api/auth/login', { email, password });
 
-    if (error) {
+      // Store our JWT
+      api.setToken(result.token);
+
+      // Set Supabase session for DB RLS compatibility
+      if (result.supabase_session) {
+        await supabase.auth.setSession(result.supabase_session);
+      }
+
+      return { error: null };
+    } catch (err) {
       toast({
         variant: "destructive",
         title: "Sign in Failed",
-        description: error.message || "Something went wrong",
+        description: err.message || "Something went wrong",
       });
+      return { error: err };
     }
-
-    return { error };
   }, [toast]);
 
   const signOut = useCallback(async () => {
+    // Clear our JWT
+    api.setToken(null);
+
+    // Sign out from Supabase (clears session, triggers onAuthStateChange)
     const { error } = await supabase.auth.signOut();
 
     if (error) {
@@ -94,6 +115,14 @@ export const AuthProvider = ({ children }) => {
   }), [user, session, loading, signUp, signIn, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 };
 
 export const useAuth = () => {

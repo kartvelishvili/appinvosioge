@@ -1,7 +1,7 @@
-import { supabase } from '@/lib/customSupabaseClient';
+import api from '@/lib/api';
 
 /**
- * Sends an Email campaign using Supabase Edge Function (Resend API)
+ * Sends an Email campaign using backend API (Resend)
  * @param {string[]} recipients - Array of email addresses
  * @param {string} subject - Email subject
  * @param {string} html - Email HTML body
@@ -26,40 +26,20 @@ export const sendEmailCampaign = async (recipients, subject, html, invoiceId = n
   }
 
   try {
-    console.log(`🚀 [Email Service] Invoking 'send-email' edge function...`);
+    console.log(`🚀 [Email Service] Calling backend /api/send-email...`);
     
-    const { data, error } = await supabase.functions.invoke('send-email', {
-      body: {
-        recipients,
-        subject,
-        html, // Passed as 'html' to match Edge Function expectation
-        invoice_id: invoiceId,
-        test_mode: testMode
-      }
+    const data = await api.post('/api/send-email', {
+      recipients,
+      subject,
+      html,
+      invoice_id: invoiceId,
+      test_mode: testMode
     });
 
-    if (error) {
-      console.error("❌ [Email Service] Edge Function Invocation Error:", error);
-      // Try to parse the error body if available
-      let errorMsg = error.message;
-      try {
-         if (error.context && typeof error.context.json === 'function') {
-            const body = await error.context.json();
-            if (body.error) errorMsg = body.error;
-         } else if (typeof error === 'string') {
-             const parsed = JSON.parse(error);
-             if (parsed.error) errorMsg = parsed.error;
-         }
-      } catch(e) {
-         console.warn("Error parsing failed:", e);
-      }
-      throw new Error(errorMsg || "Failed to invoke email service");
-    }
-
-    console.log("✅ [Email Service] Edge Function returned:", data);
+    console.log("✅ [Email Service] Backend returned:", data);
 
     if (!data.success) {
-        console.error("❌ [Email Service] Edge Function reported failure:", data.error);
+        console.error("❌ [Email Service] Backend reported failure:", data.error);
         return { success: false, error: data.error };
     }
 
